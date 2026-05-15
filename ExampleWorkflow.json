@@ -1,0 +1,49 @@
+{
+  "1": {
+    "inputs": {
+      "base_model": "FLUX.2-klein-base-9B",
+      "adapter": "AsymFLUX.2-klein-9B",
+      "dtype": "bfloat16",
+      "device": "cuda",
+      "enable_cpu_offload": false
+    },
+    "class_type": "AsymFlux2 Klein Loader",
+    "_meta": {
+      "title": "AsymFlux2 Klein Loader"
+    }
+  },
+  "2": {
+    "inputs": {
+      "prompt": "Beautiful woman with the broad angelic butterfly wings organically attached to her lower back, headband with 2 symmetrical antennae with single glowing orb tops, ethereal, wearing black modeling outfit covered in white glinting flashes, rounded ocular aviator goggles with large lenses resembling red insect_eyes, frosted white skin, large sunflowers creating a foreground barrier, bokeh photography, night vision, dark lighting, high-resolution, Cinematic view. Atmospheric lighting. visually impressive, extremely detailed. zidiusArt",
+      "seed": 2114231433,
+      "negative_prompt": "",
+      "width": 1440,
+      "height": 2048,
+      "num_inference_steps": 38,
+      "guidance_scale": 4,
+      "orthogonal_guidance": 1,
+      "clamp_denoised": true,
+      "pipe": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "AsymFlux2 Klein Sampler",
+    "_meta": {
+      "title": "AsymFlux2 Klein Sampler"
+    }
+  },
+  "3": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}
