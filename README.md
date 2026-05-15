@@ -6,7 +6,7 @@
 
 Standalone ComfyUI node pack for [AsymFLUX.2 Klein](https://hanshengchen.com/asymflow) -- pixel-space text-to-image generation.
 
-Based on [AsymFlow: Asymmetric Flow Models](https://arxiv.org/abs/2605.12964) by Hansheng Chen et al. (Stanford University).
+Based on [AsymFlow: Asymmetric Flow Models](https://arxiv.org/abs/2605.12964)
 Core inference code extracted from [LakonLab](https://github.com/Lakonik/LakonLab).
 
 ## Nodes
