@@ -1,5 +1,9 @@
 # ComfyUI-AsymFlow
 
+<p align="center">
+  <img src="assets/hero.png" alt="AsymFLUX.2 Klein sample outputs" />
+</p>
+
 Standalone ComfyUI node pack for [AsymFLUX.2 Klein](https://hanshengchen.com/asymflow) -- pixel-space text-to-image generation.
 
 Based on [AsymFlow: Asymmetric Flow Models](https://arxiv.org/abs/2605.12964) by Hansheng Chen et al. (Stanford University).
