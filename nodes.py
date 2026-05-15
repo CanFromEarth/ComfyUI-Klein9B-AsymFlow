@@ -17,31 +17,25 @@ logger = logging.getLogger("[AsymFlow]")
 # Global pipeline cache
 _pipe_cache = {}
 
-# Register diffusers model folder
-_DIFFUSERS_DIR = os.path.join(folder_paths.models_dir, "diffusers")
-os.makedirs(_DIFFUSERS_DIR, exist_ok=True)
-
-
-def _list_diffusers_models():
-    if not os.path.isdir(_DIFFUSERS_DIR):
-        return []
-    return sorted(
-        d for d in os.listdir(_DIFFUSERS_DIR)
-        if os.path.isdir(os.path.join(_DIFFUSERS_DIR, d))
-    )
-
-
-def _resolve_model_path(name: str) -> str:
-    if os.path.isabs(name) and os.path.isdir(name):
-        return name
-    candidate = os.path.join(_DIFFUSERS_DIR, name)
-    if os.path.isdir(candidate):
-        return candidate
-    raise FileNotFoundError(
-        f"Model not found: '{name}'. "
-        f"Please download it to {_DIFFUSERS_DIR}/{name}\n"
-        f"  huggingface-cli download <repo_id> --local-dir {candidate}"
-    )
+# AsymFLUX.2 Klein 9B adapter config (from Lakonik/AsymFLUX.2-klein-9B)
+_ASYMFLUX2_KLEIN_CONFIG = {
+    "patch_size": 16,
+    "in_channels": 3,
+    "base_rank": 128,
+    "num_layers": 8,
+    "num_single_layers": 24,
+    "attention_head_dim": 128,
+    "num_attention_heads": 32,
+    "joint_attention_dim": 12288,
+    "timestep_guidance_channels": 256,
+    "mlp_ratio": 3.0,
+    "axes_dims_rope": (32, 32, 32, 32),
+    "rope_theta": 2000,
+    "eps": 1e-6,
+    "sigma_min": 1e-4,
+    "num_timesteps": 1,
+    "guidance_embeds": False,
+}
 
 
 def _get_dtype(name: str):
@@ -52,22 +46,55 @@ def _get_dtype(name: str):
     }[name]
 
 
+def _list_model_dirs(folder_name):
+    """List subdirectories in a ComfyUI model folder."""
+    dirs = []
+    try:
+        paths = folder_paths.get_folder_paths(folder_name)
+    except KeyError:
+        return dirs
+    for base_path in paths:
+        if not os.path.isdir(base_path):
+            continue
+        for d in sorted(os.listdir(base_path)):
+            if os.path.isdir(os.path.join(base_path, d)):
+                dirs.append(d)
+    return dirs
+
+
+def _resolve_model_dir(folder_name, dir_name):
+    """Get full path for a subdirectory in a ComfyUI model folder."""
+    try:
+        paths = folder_paths.get_folder_paths(folder_name)
+    except KeyError:
+        paths = []
+    for base_path in paths:
+        full = os.path.join(base_path, dir_name)
+        if os.path.isdir(full):
+            return full
+    raise FileNotFoundError(
+        f"Directory '{dir_name}' not found in {folder_name}/ model folder."
+    )
+
+
 class AsymFlux2KleinLoader:
-    """Load the AsymFLUX.2 klein pixel pipeline from local model files."""
+    """Load the AsymFLUX.2 klein pixel pipeline from local model files.
+
+    - Transformer .safetensors from models/diffusion_models/
+    - Text encoder directory from models/text_encoders/
+    - Adapter .safetensors from models/loras/
+    """
 
     @classmethod
     def INPUT_TYPES(cls):
-        available = _list_diffusers_models()
+        diff_models = folder_paths.get_filename_list("diffusion_models")
+        text_encoders = _list_model_dirs("text_encoders")
+        loras = folder_paths.get_filename_list("loras")
         return {
             "required": {
-                "base_model": (
-                    available if available else ["FLUX.2-klein-base-9B"],
-                    {},
-                ),
-                "adapter": (
-                    available if available else ["AsymFLUX.2-klein-9B"],
-                    {},
-                ),
+                "transformer": (diff_models, {}),
+                "text_encoder": (text_encoders if text_encoders else ["(place model dir in text_encoders/)"], {}),
+                "adapter": (loras, {}),
             },
             "optional": {
                 "dtype": (
@@ -88,36 +115,112 @@ class AsymFlux2KleinLoader:
     CATEGORY = "AsymFlow"
     DESCRIPTION = (
         "Load the AsymFLUX.2 klein 9B pixel-space pipeline.\n"
-        "Place models in ComfyUI/models/diffusers/."
+        "Transformer: models/diffusion_models/ (.safetensors)\n"
+        "Text encoder: models/text_encoders/ (directory)\n"
+        "Adapter: models/loras/ (.safetensors)"
     )
 
     def load(
         self,
-        base_model,
+        transformer,
+        text_encoder,
         adapter,
         dtype="bfloat16",
         device="cuda",
         enable_cpu_offload=False,
     ):
-        base_path = _resolve_model_path(base_model)
-        adapter_path = _resolve_model_path(adapter)
+        transformer_path = folder_paths.get_full_path("diffusion_models", transformer)
+        adapter_path = folder_paths.get_full_path("loras", adapter)
+        te_dir = _resolve_model_dir("text_encoders", text_encoder)
 
-        cache_key = (base_path, adapter_path, dtype, device, enable_cpu_offload)
+        cache_key = (transformer_path, te_dir, adapter_path, dtype, device, enable_cpu_offload)
         if cache_key in _pipe_cache:
             logger.info("Using cached AsymFLUX.2 klein pipeline")
             return (_pipe_cache[cache_key],)
 
+        torch_dtype = _get_dtype(dtype)
+
+        from accelerate import init_empty_weights
+        from safetensors.torch import load_file
+        from transformers import Qwen3ForCausalLM, Qwen2TokenizerFast
         from .asymflow_lib import (
             PixelFlux2KleinPipeline,
             OklabColorEncoder,
             FlowAdapterScheduler,
         )
+        from .asymflow_lib.asymflux2_model import AsymFlux2Transformer2DModel
 
-        logger.info(f"Loading AsymFLUX.2 klein pipeline from: {base_path}")
-        torch_dtype = _get_dtype(dtype)
+        # 1. Load base transformer weights
+        logger.info(f"Loading transformer weights: {transformer_path}")
+        base_state_dict = load_file(transformer_path, device="cpu")
 
-        pipe = PixelFlux2KleinPipeline.from_pretrained(
-            base_path,
+        # Strip "transformer." prefix if present (consolidated checkpoints)
+        if any(k.startswith("transformer.") for k in list(base_state_dict.keys())[:5]):
+            base_state_dict = {
+                k.removeprefix("transformer."): v
+                for k, v in base_state_dict.items()
+                if k.startswith("transformer.")
+            }
+
+        # 2. Load adapter weights and split into overwrites + LoRA
+        logger.info(f"Loading adapter weights: {adapter_path}")
+        adapter_state_dict = load_file(adapter_path, device="cpu")
+
+        overwrite_state_dict = {}
+        lora_state_dict = {}
+        for k, v in adapter_state_dict.items():
+            k_clean = k.removeprefix("transformer.")
+            if "lora" in k_clean:
+                lora_state_dict[k_clean] = v.to(dtype=torch_dtype)
+            else:
+                overwrite_state_dict[k_clean] = v.to(dtype=torch_dtype)
+        del adapter_state_dict
+
+        # 3. Merge: base weights + adapter overwrites
+        for k in base_state_dict:
+            base_state_dict[k] = base_state_dict[k].to(dtype=torch_dtype)
+        base_state_dict.update(overwrite_state_dict)
+        del overwrite_state_dict
+
+        # 4. Create AsymFlux2 model and load merged weights
+        logger.info("Creating AsymFlux2 transformer model")
+        with init_empty_weights():
+            transformer_model = AsymFlux2Transformer2DModel(**_ASYMFLUX2_KLEIN_CONFIG)
+
+        transformer_model.load_state_dict(base_state_dict, strict=False, assign=True)
+        del base_state_dict
+
+        # 5. Load LoRA weights
+        if lora_state_dict:
+            logger.info("Loading LoRA adapter weights")
+            transformer_model.load_lora_adapter(
+                lora_state_dict, prefix=None, adapter_name="asymflow", low_cpu_mem_usage=True
+            )
+        del lora_state_dict
+
+        # 6. Load text encoder + tokenizer
+        logger.info(f"Loading text encoder: {te_dir}")
+
+        # Support both flat layout and BFL-style subdirectories
+        te_subdir = os.path.join(te_dir, "text_encoder")
+        tok_subdir = os.path.join(te_dir, "tokenizer")
+
+        te_load_path = te_subdir if os.path.isdir(te_subdir) else te_dir
+        tok_load_path = tok_subdir if os.path.isdir(tok_subdir) else te_dir
+
+        text_encoder_model = Qwen3ForCausalLM.from_pretrained(
+            te_load_path, torch_dtype=torch_dtype, local_files_only=True
+        )
+        tokenizer = Qwen2TokenizerFast.from_pretrained(
+            tok_load_path, local_files_only=True
+        )
+
+        # 7. Construct pipeline
+        logger.info("Constructing AsymFLUX.2 klein pipeline")
+        pipe = PixelFlux2KleinPipeline(
+            transformer=transformer_model,
+            text_encoder=text_encoder_model,
+            tokenizer=tokenizer,
             vae=OklabColorEncoder(
                 use_affine_norm=True,
                 mean=(0.56, 0.0, 0.01),
@@ -133,13 +236,9 @@ class AsymFlux2KleinLoader:
                 dynamic_shifting_type="sqrt",
                 base_scheduler="UniPCMultistep",
             ),
-            torch_dtype=torch_dtype,
-            local_files_only=True,
         )
 
-        logger.info(f"Loading adapter from: {adapter_path}")
-        pipe.load_lakonlab_adapter(adapter_path, target_module_name="transformer")
-
+        # 8. Move to device
         if enable_cpu_offload:
             pipe.enable_model_cpu_offload()
         else:

@@ -12,7 +12,6 @@ from diffusers.utils.torch_utils import randn_tensor
 from diffusers.models import Flux2Transformer2DModel
 from diffusers.pipelines.flux2.pipeline_flux2_klein import (
     Flux2KleinPipeline, Flux2PipelineOutput, Flux2ImageProcessor)
-from .mixin import LakonLabMixin
 from .guidance import guidance_jit
 from .schedulers import FlowEulerODEScheduler
 from .color_encoder import OklabColorEncoder
@@ -26,7 +25,7 @@ else:
     XLA_AVAILABLE = False
 
 
-class PixelFlux2KleinPipeline(Flux2KleinPipeline, LakonLabMixin):
+class PixelFlux2KleinPipeline(Flux2KleinPipeline):
 
     model_cpu_offload_seq = "text_encoder->transformer"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
