@@ -3,13 +3,13 @@
 Standalone ComfyUI node pack for [AsymFLUX.2 Klein](https://hanshengchen.com/asymflow) -- pixel-space text-to-image generation.
 
 Based on [AsymFlow: Asymmetric Flow Models](https://arxiv.org/abs/2605.12964) by Hansheng Chen et al. (Stanford University).
-Core inference code extracted from [LakonLab](https://github.com/Lakonik/LakonLab) and bundled for self-contained use -- no need to clone the full LakonLab repository.
+Core inference code extracted from [LakonLab](https://github.com/Lakonik/LakonLab).
 
 ## Nodes
 
 | Node | Purpose |
 |------|---------|
-| **AsymFLUX.2 Klein Loader** | Load base model + AsymFlow adapter into a pixel-space pipeline |
+| **AsymFLUX.2 Klein Loader** | Load transformer + text encoder + adapter |
 | **AsymFLUX.2 Klein Sampler** | Text-to-image and image-to-image generation |
 
 ## Setup
@@ -23,15 +23,42 @@ pip install -r requirements.txt
 
 ### 2. Download models
 
-Place models in `ComfyUI/models/diffusers/`:
-
+**Transformer** → `models/diffusion_models/`
 ```bash
 huggingface-cli download black-forest-labs/FLUX.2-klein-base-9B \
-    --local-dir ComfyUI/models/diffusers/FLUX.2-klein-base-9B
-
-huggingface-cli download Lakonik/AsymFLUX.2-klein-9B \
-    --local-dir ComfyUI/models/diffusers/AsymFLUX.2-klein-9B
+    flux-2-klein-base-9b.safetensors \
+    --local-dir ComfyUI/models/diffusion_models/
 ```
+
+**Text Encoder + Tokenizer** → `models/text_encoders/`
+```bash
+huggingface-cli download black-forest-labs/FLUX.2-klein-base-9B \
+    --include "text_encoder/*" "tokenizer/*" \
+    --local-dir ComfyUI/models/text_encoders/FLUX2-klein-9B/
+```
+
+**Adapter** → `models/loras/`
+```bash
+huggingface-cli download Lakonik/AsymFLUX.2-klein-9B \
+    diffusion_pytorch_model.safetensors \
+    --local-dir ComfyUI/models/loras/
+```
+
+### 3. Use in ComfyUI
+
+1. Add **AsymFLUX.2 Klein Loader** — select transformer, text encoder dir, and adapter
+2. Connect to **AsymFLUX.2 Klein Sampler**
+3. Enter a prompt and generate
+
+## Model Locations
+
+| Component | Folder | Format |
+|-----------|--------|--------|
+| Transformer | `models/diffusion_models/` | Single .safetensors |
+| Text Encoder | `models/text_encoders/<name>/` | Directory (config.json + sharded .safetensors) |
+| Adapter | `models/loras/` | Single .safetensors |
+
+The text encoder directory supports both flat layout and BFL-style subdirectories (`text_encoder/` + `tokenizer/`).
 
 ## Recommended Settings
 
@@ -45,7 +72,7 @@ huggingface-cli download Lakonik/AsymFLUX.2-klein-9B \
 
 ## Credits
 
-- **AsymFlow** paper and code: Hansheng Chen, Jan Ackermann, Minseo Kim, Gordon Wetzstein, Leonidas Guibas (Stanford University)
+- **AsymFlow**: Hansheng Chen, Jan Ackermann, Minseo Kim, Gordon Wetzstein, Leonidas Guibas (Stanford University)
 - **FLUX.2 Klein**: Black Forest Labs
 
 ## License
