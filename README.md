@@ -59,10 +59,8 @@ huggingface-cli download Lakonik/AsymFLUX.2-klein-9B \
 | Component | Folder | Format |
 |-----------|--------|--------|
 | Transformer | `models/diffusion_models/` | Single .safetensors |
-| Text Encoder | `models/text_encoders/<name>/` | Directory (config.json + sharded .safetensors) |
 | Adapter | `models/loras/` | Single .safetensors |
 
-The text encoder directory supports both flat layout and BFL-style subdirectories (`text_encoder/` + `tokenizer/`).
 
 ## Recommended Settings
 
