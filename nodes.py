@@ -81,19 +81,21 @@ class AsymFlux2KleinLoader:
     """Load the AsymFLUX.2 klein pixel pipeline from local model files.
 
     - Transformer .safetensors from models/diffusion_models/
-    - Text encoder directory from models/text_encoders/
+    - Text encoder directory from models/text_encoders/ or models/clip/
     - Adapter .safetensors from models/loras/
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         diff_models = folder_paths.get_filename_list("diffusion_models")
-        text_encoders = _list_model_dirs("text_encoders")
+        te_dirs = sorted(set(
+            _list_model_dirs("text_encoders") + _list_model_dirs("clip")
+        ))
         loras = folder_paths.get_filename_list("loras")
         return {
             "required": {
                 "transformer": (diff_models, {}),
-                "text_encoder": (text_encoders if text_encoders else ["(place model dir in text_encoders/)"], {}),
+                "text_encoder": (te_dirs if te_dirs else ["(place model dir in text_encoders/ or clip/)"], {}),
                 "adapter": (loras, {}),
             },
             "optional": {
@@ -116,7 +118,7 @@ class AsymFlux2KleinLoader:
     DESCRIPTION = (
         "Load the AsymFLUX.2 klein 9B pixel-space pipeline.\n"
         "Transformer: models/diffusion_models/ (.safetensors)\n"
-        "Text encoder: models/text_encoders/ (directory)\n"
+        "Text encoder: models/text_encoders/ or models/clip/ (directory)\n"
         "Adapter: models/loras/ (.safetensors)"
     )
 
@@ -131,7 +133,11 @@ class AsymFlux2KleinLoader:
     ):
         transformer_path = folder_paths.get_full_path("diffusion_models", transformer)
         adapter_path = folder_paths.get_full_path("loras", adapter)
-        te_dir = _resolve_model_dir("text_encoders", text_encoder)
+        # Look in both text_encoders/ and clip/
+        try:
+            te_dir = _resolve_model_dir("text_encoders", text_encoder)
+        except FileNotFoundError:
+            te_dir = _resolve_model_dir("clip", text_encoder)
 
         cache_key = (transformer_path, te_dir, adapter_path, dtype, device, enable_cpu_offload)
         if cache_key in _pipe_cache:
