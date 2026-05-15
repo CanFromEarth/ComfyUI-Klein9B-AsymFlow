@@ -33,12 +33,6 @@ huggingface-cli download Lakonik/AsymFLUX.2-klein-9B \
     --local-dir ComfyUI/models/diffusers/AsymFLUX.2-klein-9B
 ```
 
-### 3. Use in ComfyUI
-
-1. Add **AsymFLUX.2 Klein Loader** node, select base model and adapter
-2. Connect its output to **AsymFLUX.2 Klein Sampler**
-3. Enter a prompt and generate
-
 ## Recommended Settings
 
 | Parameter | Default | Notes |
